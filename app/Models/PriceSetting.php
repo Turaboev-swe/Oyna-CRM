@@ -11,6 +11,7 @@ class PriceSetting extends Model
     use HasFactory;
 
     const UPDATED_AT = 'updated_at';
+
     const CREATED_AT = null;
 
     protected $fillable = [
@@ -24,6 +25,19 @@ class PriceSetting extends Model
 
     public function updatedBy(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'updated_by');
+        return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    protected static function booted(): void
+    {
+        static::updating(function (PriceSetting $priceSetting) {
+            if ($priceSetting->isDirty('price_per_sqm')) {
+                PriceHistory::create([
+                    'price_per_sqm' => $priceSetting->getOriginal('price_per_sqm'),
+                    'changed_by' => auth()->id() ?? $priceSetting->getOriginal('updated_by'),
+                    'changed_at' => now(),
+                ]);
+            }
+        });
     }
 }

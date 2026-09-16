@@ -2,9 +2,15 @@
 
 namespace Database\Seeders;
 
+use App\Enums\OrderStatus;
+use App\Enums\WorkerStatus;
+use App\Models\Order;
+use App\Models\PriceSetting;
 use App\Models\User;
+use App\Models\Worker;
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
@@ -13,11 +19,37 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        $admin = User::firstOrCreate(
+            ['email' => 'admin@oynarom.uz'],
+            [
+                'name' => 'Admin',
+                'password' => Hash::make('password'),
+            ]
+        );
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+        PriceSetting::firstOrCreate([], [
+            'price_per_sqm' => 150000,
+            'updated_by' => $admin->id,
         ]);
+
+        $worker = Worker::firstOrCreate(
+            ['telegram_id' => 123456789],
+            [
+                'ism' => 'Akmal Karimov',
+                'telefon' => '+998901234567',
+                'status' => WorkerStatus::Active,
+            ]
+        );
+
+        Order::firstOrCreate(
+            ['worker_id' => $worker->id, 'customer_name' => 'Test Mijoz'],
+            [
+                'customer_phone' => '+998907654321',
+                'square_meters' => 12.5,
+                'price_per_sqm_snapshot' => 150000,
+                'total_price' => 1875000,
+                'status' => OrderStatus::New,
+            ]
+        );
     }
 }

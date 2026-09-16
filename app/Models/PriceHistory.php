@@ -10,7 +10,10 @@ class PriceHistory extends Model
 {
     use HasFactory;
 
+    protected $table = 'price_history';
+
     const CREATED_AT = null;
+
     const UPDATED_AT = null;
 
     protected $fillable = [
