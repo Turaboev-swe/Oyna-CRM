@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\PriceSetting;
 use App\Models\User;
 use App\Models\Worker;
+use DefStudio\Telegraph\Models\TelegraphBot;
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -51,5 +52,12 @@ class DatabaseSeeder extends Seeder
                 'status' => OrderStatus::New,
             ]
         );
+
+        if (filled($token = env('TELEGRAM_BOT_TOKEN'))) {
+            TelegraphBot::firstOrCreate(
+                ['token' => $token],
+                ['name' => 'Oyna-Rom Bot']
+            );
+        }
     }
 }
