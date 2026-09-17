@@ -5,6 +5,7 @@ namespace App\Telegram\Handlers;
 use App\Enums\OrderDraftStep;
 use App\Enums\OrderStatus;
 use App\Enums\WorkerStatus;
+use App\Models\Customer;
 use App\Models\Order;
 use App\Models\OrderDraft;
 use App\Models\PriceSetting;
@@ -17,6 +18,8 @@ use Illuminate\Support\Stringable;
 
 class WorkerBotHandler extends WebhookHandler
 {
+    private const CUSTOMERS_PER_PAGE = 5;
+
     public function start(string $parameter = ''): void
     {
         $telegramUser = $this->message?->from();
@@ -63,7 +66,10 @@ class WorkerBotHandler extends WebhookHandler
             OrderDraftStep::AwaitingHeight => $this->handleHeightInput($draft, $value),
             OrderDraftStep::AwaitingCustomerName => $this->handleCustomerNameInput($draft, $value),
             OrderDraftStep::AwaitingCustomerPhone => $this->handleCustomerPhoneInput($draft, $value),
-            OrderDraftStep::AwaitingCalcChoice, OrderDraftStep::AwaitingHasCustomer, OrderDraftStep::AwaitingConfirmation => $this->chat->html('Iltimos, quyidagi tugmalardan birini tanlang.')->send(),
+            OrderDraftStep::AwaitingCalcChoice,
+            OrderDraftStep::AwaitingCustomerChoice,
+            OrderDraftStep::AwaitingCustomerSelection,
+            OrderDraftStep::AwaitingConfirmation => $this->chat->html('Iltimos, quyidagi tugmalardan birini tanlang.')->send(),
         };
     }
 
@@ -82,6 +88,7 @@ class WorkerBotHandler extends WebhookHandler
                 'square_meters' => null,
                 'width_meters' => null,
                 'height_meters' => null,
+                'customer_id' => null,
                 'customer_name' => null,
                 'customer_phone' => null,
             ]
@@ -127,9 +134,9 @@ class WorkerBotHandler extends WebhookHandler
             ->send();
     }
 
-    public function customerYes(): void
+    public function customerNew(): void
     {
-        $draft = $this->draftAtStep(OrderDraftStep::AwaitingHasCustomer);
+        $draft = $this->draftAtStep(OrderDraftStep::AwaitingCustomerChoice);
 
         if ($draft === null) {
             return;
@@ -143,9 +150,59 @@ class WorkerBotHandler extends WebhookHandler
             ->send();
     }
 
-    public function customerNo(): void
+    public function customerExisting(): void
     {
-        $draft = $this->draftAtStep(OrderDraftStep::AwaitingHasCustomer);
+        $draft = $this->draftAtStep(OrderDraftStep::AwaitingCustomerChoice);
+
+        if ($draft === null) {
+            return;
+        }
+
+        $draft->update(['step' => OrderDraftStep::AwaitingCustomerSelection]);
+
+        $this->showCustomersPage(1);
+    }
+
+    public function customersPage(string $page): void
+    {
+        $draft = $this->draftAtStep(OrderDraftStep::AwaitingCustomerSelection);
+
+        if ($draft === null) {
+            return;
+        }
+
+        $this->showCustomersPage((int) $page);
+    }
+
+    public function selectCustomer(string $id): void
+    {
+        $draft = $this->draftAtStep(OrderDraftStep::AwaitingCustomerSelection);
+
+        if ($draft === null) {
+            return;
+        }
+
+        $customer = Customer::find((int) $id);
+
+        if ($customer === null) {
+            $this->chat->html("Mijoz topilmadi, qayta urinib ko'ring.")->send();
+
+            return;
+        }
+
+        $draft->update([
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
+            'step' => OrderDraftStep::AwaitingConfirmation,
+        ]);
+
+        $this->sendSummary($draft);
+    }
+
+    public function customerNone(): void
+    {
+        $draft = $this->draftAtStep(OrderDraftStep::AwaitingCustomerChoice);
 
         if ($draft === null) {
             return;
@@ -153,6 +210,7 @@ class WorkerBotHandler extends WebhookHandler
 
         $draft->update([
             'step' => OrderDraftStep::AwaitingConfirmation,
+            'customer_id' => null,
             'customer_name' => null,
             'customer_phone' => null,
         ]);
@@ -179,6 +237,7 @@ class WorkerBotHandler extends WebhookHandler
 
         Order::create([
             'worker_id' => $worker->id,
+            'customer_id' => $draft->customer_id,
             'customer_name' => $draft->customer_name,
             'customer_phone' => $draft->customer_phone,
             'square_meters' => $draft->square_meters,
@@ -221,10 +280,10 @@ class WorkerBotHandler extends WebhookHandler
 
         $draft->update([
             'square_meters' => $squareMeters,
-            'step' => OrderDraftStep::AwaitingHasCustomer,
+            'step' => OrderDraftStep::AwaitingCustomerChoice,
         ]);
 
-        $this->askHasCustomer();
+        $this->askCustomerChoice();
     }
 
     private function handleWidthInput(OrderDraft $draft, string $value): void
@@ -269,24 +328,72 @@ class WorkerBotHandler extends WebhookHandler
         $draft->update([
             'height_meters' => $height,
             'square_meters' => $squareMeters,
-            'step' => OrderDraftStep::AwaitingHasCustomer,
+            'step' => OrderDraftStep::AwaitingCustomerChoice,
         ]);
 
         $this->chat->html("Hisoblangan maydon: {$squareMeters} kv.m")->send();
 
-        $this->askHasCustomer();
+        $this->askCustomerChoice();
     }
 
-    private function askHasCustomer(): void
+    private function askCustomerChoice(): void
     {
         $keyboard = Keyboard::make()
-            ->row([
-                Button::make('✅ Ha')->action('customerYes'),
-                Button::make("❌ Yo'q")->action('customerNo'),
-            ])
+            ->row([Button::make('🆕 Yangi mijoz')->action('customerNew')])
+            ->row([Button::make('📋 Mavjud mijozlardan tanlash')->action('customerExisting')])
+            ->row([Button::make('➖ Mijozsiz davom etish')->action('customerNone')])
             ->row([$this->cancelButton()]);
 
         $this->chat->html("Mijoz ma'lumoti bormi?")->keyboard($keyboard)->send();
+    }
+
+    private function showCustomersPage(int $page): void
+    {
+        $page = max(1, $page);
+
+        $customers = Customer::withMax('orders as last_order_at', 'created_at')
+            ->orderByDesc('last_order_at')
+            ->orderByDesc('id')
+            ->paginate(self::CUSTOMERS_PER_PAGE, ['*'], 'page', $page);
+
+        if ($customers->isEmpty()) {
+            $this->chat
+                ->html("Hozircha ro'yxatda mijoz yo'q.")
+                ->keyboard($this->cancelKeyboard())
+                ->send();
+
+            return;
+        }
+
+        $keyboard = Keyboard::make();
+
+        foreach ($customers as $index => $customer) {
+            $number = ($customers->currentPage() - 1) * self::CUSTOMERS_PER_PAGE + $index + 1;
+
+            $keyboard = $keyboard->row([
+                Button::make("{$number}. {$customer->name} — {$customer->phone}")
+                    ->action('selectCustomer')
+                    ->param('id', $customer->id),
+            ]);
+        }
+
+        $navButtons = [];
+
+        if ($customers->currentPage() > 1) {
+            $navButtons[] = Button::make('⬅️ Oldingisi')->action('customersPage')->param('page', $customers->currentPage() - 1);
+        }
+
+        if ($customers->hasMorePages()) {
+            $navButtons[] = Button::make('➡️ Keyingisi')->action('customersPage')->param('page', $customers->currentPage() + 1);
+        }
+
+        if ($navButtons !== []) {
+            $keyboard = $keyboard->row($navButtons);
+        }
+
+        $keyboard = $keyboard->row([$this->cancelButton()]);
+
+        $this->chat->html('Mijozni tanlang:')->keyboard($keyboard)->send();
     }
 
     private function handleCustomerNameInput(OrderDraft $draft, string $value): void
@@ -313,10 +420,23 @@ class WorkerBotHandler extends WebhookHandler
             return;
         }
 
+        $existingCustomer = Customer::where('phone', $value)->first();
+
+        $customer = $existingCustomer ?? Customer::create([
+            'name' => $draft->customer_name,
+            'phone' => $value,
+        ]);
+
         $draft->update([
-            'customer_phone' => $value,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'customer_phone' => $customer->phone,
             'step' => OrderDraftStep::AwaitingConfirmation,
         ]);
+
+        if ($existingCustomer !== null) {
+            $this->chat->html("Bu mijoz allaqachon ro'yxatda, unga bog'landi.")->send();
+        }
 
         $this->sendSummary($draft);
     }

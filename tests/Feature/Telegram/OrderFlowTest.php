@@ -5,6 +5,7 @@ namespace Tests\Feature\Telegram;
 use App\Enums\OrderDraftStep;
 use App\Enums\OrderStatus;
 use App\Enums\WorkerStatus;
+use App\Models\Customer;
 use App\Models\PriceSetting;
 use App\Models\User;
 use App\Models\Worker;
@@ -120,11 +121,11 @@ class OrderFlowTest extends TestCase
         $this->sendText('12.5');
         $this->assertDatabaseHas('order_drafts', [
             'worker_id' => $this->worker->id,
-            'step' => OrderDraftStep::AwaitingHasCustomer->value,
+            'step' => OrderDraftStep::AwaitingCustomerChoice->value,
             'square_meters' => 12.50,
         ]);
 
-        $this->sendCallback('customerYes');
+        $this->sendCallback('customerNew');
         $this->assertDatabaseHas('order_drafts', [
             'worker_id' => $this->worker->id,
             'step' => OrderDraftStep::AwaitingCustomerName->value,
@@ -145,11 +146,16 @@ class OrderFlowTest extends TestCase
         ]);
         $this->assertLastMessageContains('Jami: 1 250 000');
 
+        $customer = Customer::where('phone', '+998901112233')->first();
+        $this->assertNotNull($customer);
+        $this->assertSame('Aziz Azizov', $customer->name);
+
         $this->sendCallback('confirmOrder');
 
         $this->assertDatabaseMissing('order_drafts', ['worker_id' => $this->worker->id]);
         $this->assertDatabaseHas('orders', [
             'worker_id' => $this->worker->id,
+            'customer_id' => $customer->id,
             'customer_name' => 'Aziz Azizov',
             'customer_phone' => '+998901112233',
             'square_meters' => 12.50,
@@ -165,7 +171,7 @@ class OrderFlowTest extends TestCase
         $this->sendCallback('newOrder');
         $this->sendCallback('calcBySquareMeters');
         $this->sendText('10');
-        $this->sendCallback('customerNo');
+        $this->sendCallback('customerNone');
 
         $this->assertDatabaseHas('order_drafts', [
             'worker_id' => $this->worker->id,
@@ -244,14 +250,14 @@ class OrderFlowTest extends TestCase
         $this->sendText('2.0');
         $this->assertDatabaseHas('order_drafts', [
             'worker_id' => $this->worker->id,
-            'step' => OrderDraftStep::AwaitingHasCustomer->value,
+            'step' => OrderDraftStep::AwaitingCustomerChoice->value,
             'width_meters' => 1.50,
             'height_meters' => 2.00,
             'square_meters' => 3.00,
         ]);
         $this->assertLastMessageContains('Hisoblangan maydon: 3');
 
-        $this->sendCallback('customerNo');
+        $this->sendCallback('customerNone');
         $this->sendCallback('confirmOrder');
 
         $this->assertDatabaseHas('orders', [

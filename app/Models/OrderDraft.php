@@ -17,6 +17,7 @@ class OrderDraft extends Model
         'square_meters',
         'width_meters',
         'height_meters',
+        'customer_id',
         'customer_name',
         'customer_phone',
     ];
@@ -31,5 +32,10 @@ class OrderDraft extends Model
     public function worker(): BelongsTo
     {
         return $this->belongsTo(Worker::class);
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
     }
 }

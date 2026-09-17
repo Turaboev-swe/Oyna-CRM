@@ -3,6 +3,7 @@
 namespace Tests\Feature\Filament;
 
 use App\Enums\WorkerStatus;
+use App\Models\Customer;
 use App\Models\Order;
 use App\Models\PriceSetting;
 use App\Models\User;
@@ -33,6 +34,7 @@ class AdminPanelTest extends TestCase
         ]);
         $worker = Worker::factory()->create(['status' => WorkerStatus::Active]);
         $order = Order::factory()->create(['worker_id' => $worker->id]);
+        Customer::factory()->create();
 
         $this->actingAs($admin);
 
@@ -44,6 +46,8 @@ class AdminPanelTest extends TestCase
 
         $this->get('/admin/orders')->assertOk();
         $this->get("/admin/orders/{$order->id}/edit")->assertOk();
+
+        $this->get('/admin/customers')->assertOk();
     }
 
     public function test_updating_price_setting_logs_price_history(): void

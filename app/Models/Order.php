@@ -15,6 +15,7 @@ class Order extends Model
 
     protected $fillable = [
         'worker_id',
+        'customer_id',
         'customer_name',
         'customer_phone',
         'square_meters',
@@ -33,5 +34,10 @@ class Order extends Model
     public function worker(): BelongsTo
     {
         return $this->belongsTo(Worker::class);
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
     }
 }
