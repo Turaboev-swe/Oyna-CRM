@@ -59,9 +59,11 @@ class WorkerBotHandler extends WebhookHandler
 
         match ($draft->step) {
             OrderDraftStep::AwaitingSquareMeters => $this->handleSquareMetersInput($draft, $value),
+            OrderDraftStep::AwaitingWidth => $this->handleWidthInput($draft, $value),
+            OrderDraftStep::AwaitingHeight => $this->handleHeightInput($draft, $value),
             OrderDraftStep::AwaitingCustomerName => $this->handleCustomerNameInput($draft, $value),
             OrderDraftStep::AwaitingCustomerPhone => $this->handleCustomerPhoneInput($draft, $value),
-            OrderDraftStep::AwaitingHasCustomer, OrderDraftStep::AwaitingConfirmation => $this->chat->html('Iltimos, quyidagi tugmalardan birini tanlang.')->send(),
+            OrderDraftStep::AwaitingCalcChoice, OrderDraftStep::AwaitingHasCustomer, OrderDraftStep::AwaitingConfirmation => $this->chat->html('Iltimos, quyidagi tugmalardan birini tanlang.')->send(),
         };
     }
 
@@ -76,15 +78,51 @@ class WorkerBotHandler extends WebhookHandler
         OrderDraft::updateOrCreate(
             ['worker_id' => $worker->id],
             [
-                'step' => OrderDraftStep::AwaitingSquareMeters,
+                'step' => OrderDraftStep::AwaitingCalcChoice,
                 'square_meters' => null,
+                'width_meters' => null,
+                'height_meters' => null,
                 'customer_name' => null,
                 'customer_phone' => null,
             ]
         );
 
+        $keyboard = Keyboard::make()
+            ->row([Button::make('📐 Kvadrat metrni bilaman')->action('calcBySquareMeters')])
+            ->row([Button::make("📏 Eni va bo'yini kiritaman")->action('calcByDimensions')])
+            ->row([$this->cancelButton()]);
+
+        $this->chat->html('Kvadrat metrni qanday kiritmoqchisiz?')->keyboard($keyboard)->send();
+    }
+
+    public function calcBySquareMeters(): void
+    {
+        $draft = $this->draftAtStep(OrderDraftStep::AwaitingCalcChoice);
+
+        if ($draft === null) {
+            return;
+        }
+
+        $draft->update(['step' => OrderDraftStep::AwaitingSquareMeters]);
+
         $this->chat
             ->html('Necha kvadrat metr? (masalan: 12.5)')
+            ->keyboard($this->cancelKeyboard())
+            ->send();
+    }
+
+    public function calcByDimensions(): void
+    {
+        $draft = $this->draftAtStep(OrderDraftStep::AwaitingCalcChoice);
+
+        if ($draft === null) {
+            return;
+        }
+
+        $draft->update(['step' => OrderDraftStep::AwaitingWidth]);
+
+        $this->chat
+            ->html('Eni necha metr? (masalan: 1.5)')
             ->keyboard($this->cancelKeyboard())
             ->send();
     }
@@ -170,7 +208,7 @@ class WorkerBotHandler extends WebhookHandler
 
     private function handleSquareMetersInput(OrderDraft $draft, string $value): void
     {
-        $squareMeters = $this->parseSquareMeters($value);
+        $squareMeters = $this->parsePositiveDecimal($value);
 
         if ($squareMeters === null) {
             $this->chat
@@ -186,6 +224,61 @@ class WorkerBotHandler extends WebhookHandler
             'step' => OrderDraftStep::AwaitingHasCustomer,
         ]);
 
+        $this->askHasCustomer();
+    }
+
+    private function handleWidthInput(OrderDraft $draft, string $value): void
+    {
+        $width = $this->parsePositiveDecimal($value);
+
+        if ($width === null) {
+            $this->chat
+                ->html("Noto'g'ri format. Iltimos, raqam kiriting (masalan: 1.5)")
+                ->keyboard($this->cancelKeyboard())
+                ->send();
+
+            return;
+        }
+
+        $draft->update([
+            'width_meters' => $width,
+            'step' => OrderDraftStep::AwaitingHeight,
+        ]);
+
+        $this->chat
+            ->html("Bo'yi necha metr? (masalan: 2.0)")
+            ->keyboard($this->cancelKeyboard())
+            ->send();
+    }
+
+    private function handleHeightInput(OrderDraft $draft, string $value): void
+    {
+        $height = $this->parsePositiveDecimal($value);
+
+        if ($height === null) {
+            $this->chat
+                ->html("Noto'g'ri format. Iltimos, raqam kiriting (masalan: 2.0)")
+                ->keyboard($this->cancelKeyboard())
+                ->send();
+
+            return;
+        }
+
+        $squareMeters = round((float) $draft->width_meters * $height, 2);
+
+        $draft->update([
+            'height_meters' => $height,
+            'square_meters' => $squareMeters,
+            'step' => OrderDraftStep::AwaitingHasCustomer,
+        ]);
+
+        $this->chat->html("Hisoblangan maydon: {$squareMeters} kv.m")->send();
+
+        $this->askHasCustomer();
+    }
+
+    private function askHasCustomer(): void
+    {
         $keyboard = Keyboard::make()
             ->row([
                 Button::make('✅ Ha')->action('customerYes'),
@@ -228,7 +321,7 @@ class WorkerBotHandler extends WebhookHandler
         $this->sendSummary($draft);
     }
 
-    private function parseSquareMeters(string $value): ?float
+    private function parsePositiveDecimal(string $value): ?float
     {
         $normalized = str_replace(',', '.', trim($value));
 

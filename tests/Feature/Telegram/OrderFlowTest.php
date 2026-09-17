@@ -108,6 +108,12 @@ class OrderFlowTest extends TestCase
         $this->sendCallback('newOrder');
         $this->assertDatabaseHas('order_drafts', [
             'worker_id' => $this->worker->id,
+            'step' => OrderDraftStep::AwaitingCalcChoice->value,
+        ]);
+
+        $this->sendCallback('calcBySquareMeters');
+        $this->assertDatabaseHas('order_drafts', [
+            'worker_id' => $this->worker->id,
             'step' => OrderDraftStep::AwaitingSquareMeters->value,
         ]);
 
@@ -157,6 +163,7 @@ class OrderFlowTest extends TestCase
     public function test_flow_without_customer_creates_order_without_customer_info(): void
     {
         $this->sendCallback('newOrder');
+        $this->sendCallback('calcBySquareMeters');
         $this->sendText('10');
         $this->sendCallback('customerNo');
 
@@ -183,6 +190,7 @@ class OrderFlowTest extends TestCase
     public function test_cancel_during_flow_discards_draft_and_creates_no_order(): void
     {
         $this->sendCallback('newOrder');
+        $this->sendCallback('calcBySquareMeters');
         $this->sendText('20');
 
         $this->assertDatabaseHas('order_drafts', ['worker_id' => $this->worker->id]);
@@ -197,6 +205,7 @@ class OrderFlowTest extends TestCase
     public function test_invalid_square_meters_input_is_rejected_and_step_unchanged(): void
     {
         $this->sendCallback('newOrder');
+        $this->sendCallback('calcBySquareMeters');
         $this->sendText('not-a-number');
 
         $this->assertDatabaseHas('order_drafts', [
@@ -214,5 +223,110 @@ class OrderFlowTest extends TestCase
         $this->sendCallback('newOrder');
 
         $this->assertDatabaseMissing('order_drafts', ['worker_id' => $this->worker->id]);
+    }
+
+    public function test_full_successful_flow_with_dimensions_creates_order(): void
+    {
+        $this->sendCallback('newOrder');
+        $this->sendCallback('calcByDimensions');
+        $this->assertDatabaseHas('order_drafts', [
+            'worker_id' => $this->worker->id,
+            'step' => OrderDraftStep::AwaitingWidth->value,
+        ]);
+
+        $this->sendText('1.5');
+        $this->assertDatabaseHas('order_drafts', [
+            'worker_id' => $this->worker->id,
+            'step' => OrderDraftStep::AwaitingHeight->value,
+            'width_meters' => 1.50,
+        ]);
+
+        $this->sendText('2.0');
+        $this->assertDatabaseHas('order_drafts', [
+            'worker_id' => $this->worker->id,
+            'step' => OrderDraftStep::AwaitingHasCustomer->value,
+            'width_meters' => 1.50,
+            'height_meters' => 2.00,
+            'square_meters' => 3.00,
+        ]);
+        $this->assertLastMessageContains('Hisoblangan maydon: 3');
+
+        $this->sendCallback('customerNo');
+        $this->sendCallback('confirmOrder');
+
+        $this->assertDatabaseHas('orders', [
+            'worker_id' => $this->worker->id,
+            'square_meters' => 3.00,
+            'price_per_sqm_snapshot' => 100000,
+            'total_price' => 300000,
+        ]);
+        $this->assertDatabaseMissing('order_drafts', ['worker_id' => $this->worker->id]);
+    }
+
+    public function test_dimensions_area_is_rounded_correctly(): void
+    {
+        $this->sendCallback('newOrder');
+        $this->sendCallback('calcByDimensions');
+
+        $this->sendText('1.33');
+        $this->sendText('2.17');
+
+        $this->assertDatabaseHas('order_drafts', [
+            'worker_id' => $this->worker->id,
+            'width_meters' => 1.33,
+            'height_meters' => 2.17,
+            'square_meters' => 2.89,
+        ]);
+        $this->assertLastMessageContains('Hisoblangan maydon: 2.89');
+    }
+
+    public function test_invalid_width_input_is_rejected_and_step_unchanged(): void
+    {
+        $this->sendCallback('newOrder');
+        $this->sendCallback('calcByDimensions');
+
+        $this->sendText('not-a-number');
+
+        $this->assertDatabaseHas('order_drafts', [
+            'worker_id' => $this->worker->id,
+            'step' => OrderDraftStep::AwaitingWidth->value,
+            'width_meters' => null,
+        ]);
+        $this->assertLastMessageContains("Noto'g'ri format");
+    }
+
+    public function test_invalid_height_input_is_rejected_and_step_unchanged(): void
+    {
+        $this->sendCallback('newOrder');
+        $this->sendCallback('calcByDimensions');
+        $this->sendText('1.5');
+
+        $this->sendText('not-a-number');
+
+        $this->assertDatabaseHas('order_drafts', [
+            'worker_id' => $this->worker->id,
+            'step' => OrderDraftStep::AwaitingHeight->value,
+            'width_meters' => 1.50,
+            'height_meters' => null,
+        ]);
+        $this->assertLastMessageContains("Noto'g'ri format");
+    }
+
+    public function test_cancel_during_dimensions_step_discards_draft(): void
+    {
+        $this->sendCallback('newOrder');
+        $this->sendCallback('calcByDimensions');
+        $this->sendText('1.5');
+
+        $this->assertDatabaseHas('order_drafts', [
+            'worker_id' => $this->worker->id,
+            'step' => OrderDraftStep::AwaitingHeight->value,
+        ]);
+
+        $this->sendCallback('cancelOrder');
+
+        $this->assertDatabaseMissing('order_drafts', ['worker_id' => $this->worker->id]);
+        $this->assertDatabaseMissing('orders', ['worker_id' => $this->worker->id]);
+        $this->assertLastMessageContains('Bekor qilindi');
     }
 }

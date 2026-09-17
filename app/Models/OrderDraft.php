@@ -15,6 +15,8 @@ class OrderDraft extends Model
         'worker_id',
         'step',
         'square_meters',
+        'width_meters',
+        'height_meters',
         'customer_name',
         'customer_phone',
     ];
@@ -22,6 +24,8 @@ class OrderDraft extends Model
     protected $casts = [
         'step' => OrderDraftStep::class,
         'square_meters' => 'decimal:2',
+        'width_meters' => 'decimal:2',
+        'height_meters' => 'decimal:2',
     ];
 
     public function worker(): BelongsTo
