@@ -9,6 +9,14 @@ use DefStudio\Telegraph\Telegraph;
 
 return [
     /*
+     * Bot token used by DatabaseSeeder to register the bot in telegraph_bots.
+     * Not read by the Telegraph package itself (bots are stored per-row in
+     * the DB), kept here so env() is only called from a config file - env()
+     * calls elsewhere break once `config:cache` is run.
+     */
+    'bot_token' => env('TELEGRAM_BOT_TOKEN'),
+
+    /*
      * Telegram api base url, it can be overridden
      * for self-hosted servers
      */

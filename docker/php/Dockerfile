@@ -22,6 +22,8 @@ RUN apt-get update && apt-get install -y \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
+COPY zz-opcache-custom.ini /usr/local/etc/php/conf.d/zz-opcache-custom.ini
+
 WORKDIR /var/www/html
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh

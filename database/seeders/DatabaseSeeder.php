@@ -53,7 +53,7 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        if (filled($token = env('TELEGRAM_BOT_TOKEN'))) {
+        if (filled($token = config('telegraph.bot_token'))) {
             TelegraphBot::firstOrCreate(
                 ['token' => $token],
                 ['name' => 'Oyna-Rom Bot']
