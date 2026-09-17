@@ -26,6 +26,10 @@ COPY zz-opcache-custom.ini /usr/local/etc/php/conf.d/zz-opcache-custom.ini
 
 WORKDIR /var/www/html
 
+RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framework/testing storage/framework/views storage/app/public storage/logs bootstrap/cache \
+    && chown -R www-data:www-data storage bootstrap/cache \
+    && chmod -R 775 storage bootstrap/cache
+
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
