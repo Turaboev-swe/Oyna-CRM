@@ -2,6 +2,9 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Widgets\DailyOrdersChart;
+use App\Filament\Widgets\OrderStatsOverview;
+use App\Filament\Widgets\TopWorkersWidget;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -39,6 +42,9 @@ class AdminPanelProvider extends PanelProvider
             ->widgets([
                 Widgets\AccountWidget::class,
                 Widgets\FilamentInfoWidget::class,
+                OrderStatsOverview::class,
+                DailyOrdersChart::class,
+                TopWorkersWidget::class,
             ])
             ->middleware([
                 EncryptCookies::class,

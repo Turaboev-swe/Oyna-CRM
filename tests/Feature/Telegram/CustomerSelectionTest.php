@@ -26,6 +26,12 @@ class CustomerSelectionTest extends TestCase
     {
         parent::setUp();
 
+        // Pagination/tartiblash testlari mijozlar jadvalining aniq sonini
+        // tekshiradi, shuning uchun dev bazasidagi oldingi mijozlar
+        // aralashmasligi uchun toza holatdan boshlanadi (DatabaseTransactions
+        // tufayli test tugagach bekor qilinadi).
+        Customer::query()->delete();
+
         $this->bot = TelegraphBot::create([
             'token' => 'test-bot-token-'.uniqid(),
             'name' => 'Test Bot',
